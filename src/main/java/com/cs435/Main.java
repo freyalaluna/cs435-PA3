@@ -1,11 +1,18 @@
 package com.cs435;
 
+import com.clearspring.analytics.util.Lists;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.function.Function2;
+import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.util.LongAccumulator;
 import scala.Tuple2;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 //TIP To <b>Run</b> code, press <shortcut actionId="Run"/> or
 // click the <icon src="AllIcons.Actions.Execute"/> icon in the gutter.
@@ -30,8 +37,30 @@ public class Main {
 
         for(int i = 0; i < NUM_ITERATIONS; i++){
             JavaPairRDD<String, Tuple2<String, Double>> linkRankJoin = links.join(ranks);
-            //I get lost here....
-            //JavaPairRDD<String, Double> tempRank = linkRankJoin.values().flatMapToPair();
+            //For each pair <neighbor, rank> from the above <node, <neighbors,rank>>, split neighbors, recalc each pair such that newRank = rank/number of neighbors
+            JavaPairRDD<String, Double> tempRank = linkRankJoin.values().flatMapToPair(
+                    new PairFlatMapFunction<Tuple2<String, Double>, String, Double>() {
+                        @Override
+                        public Iterator<Tuple2<String, Double>> call(Tuple2<String, Double> stringDoubleTuple2) throws Exception {
+                            List<String> urls = List.of(stringDoubleTuple2._1().split(""));
+                            List<Tuple2<String, Double>> newRanks = Lists.newArrayList();
+                            for(String url : urls){
+                                newRanks.add(new Tuple2<>(url,stringDoubleTuple2._2()/numTitles.value()));
+                            }
+
+                            return newRanks.iterator();
+                        }
+
+                    }
+            );
+
+            //Update each link's rank with the sum of each occurrence within tempRank
+            ranks = tempRank.reduceByKey(new Function2<Double, Double, Double>() {
+                @Override
+                public Double call(Double a, Double b) throws Exception {
+                    return a + b;
+                }
+            });
         }
     }
 }
