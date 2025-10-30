@@ -10,30 +10,23 @@ import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.util.LongAccumulator;
 import scala.Tuple2;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
-//TIP To <b>Run</b> code, press <shortcut actionId="Run"/> or
-// click the <icon src="AllIcons.Actions.Execute"/> icon in the gutter.
 public class Main {
     public static final int NUM_ITERATIONS = 25;
     public static void main(String[] args) {
 
         SparkConf conf = new SparkConf().setMaster("local").setAppName("Java Spark Application");
         JavaSparkContext sc = new JavaSparkContext(conf);
-        JavaRDD<String> linkList = sc.textFile("src/main/resources/links.txt");
-        JavaRDD<String> titleList = sc.textFile("src/main/resources/titles.txt");
+        JavaRDD<String> linkList = sc.textFile("hdfs://wasp.cs.colostate.edu:30121/PA3/resources/links.txt");
+        JavaRDD<String> titleList = sc.textFile("hdfs://wasp.cs.colostate.edu:30121/PA3/resources/titles.txt");
         JavaPairRDD<Long, String> indexedTitles = titleList.zipWithIndex().mapToPair(
-                                  x-> new Tuple2<>(x._2()+1,x._1()+1));
+                                  x-> new Tuple2<>(x._2()+1,x._1()));
 
-        JavaPairRDD<String, String> links = linkList.mapToPair(s->new Tuple2<>(s.split(":")[0],s.split(":")[1]));
-        LongAccumulator numTitles = sc.sc().longAccumulator();
+        JavaPairRDD<String, String> links = linkList.mapToPair(s->new Tuple2<>(s.split(":")[0].trim(),s.split(":")[1].trim()));
+        long totalPages = links.count();
 
-        //Is this safe to accumulate in parallel?
-        titleList.foreach(x -> numTitles.add(1));
-
-        JavaPairRDD<String, Double> ranks = links.mapValues(v->1.0/numTitles.value());
+        JavaPairRDD<String, Double> ranks = links.mapValues(v->1.0/totalPages);
 
         for(int i = 0; i < NUM_ITERATIONS; i++){
             JavaPairRDD<String, Tuple2<String, Double>> linkRankJoin = links.join(ranks);
@@ -42,10 +35,10 @@ public class Main {
                     new PairFlatMapFunction<Tuple2<String, Double>, String, Double>() {
                         @Override
                         public Iterator<Tuple2<String, Double>> call(Tuple2<String, Double> stringDoubleTuple2) throws Exception {
-                            List<String> urls = List.of(stringDoubleTuple2._1().split(""));
+                            List<String> urls = List.of(stringDoubleTuple2._1().split(" "));
                             List<Tuple2<String, Double>> newRanks = Lists.newArrayList();
                             for(String url : urls){
-                                newRanks.add(new Tuple2<>(url,stringDoubleTuple2._2()/numTitles.value()));
+                                newRanks.add(new Tuple2<>(url,stringDoubleTuple2._2()/urls.size()));
                             }
 
                             return newRanks.iterator();
@@ -62,5 +55,17 @@ public class Main {
                 }
             });
         }
+
+        //Find the links with the top 10 PageRanks
+        List<Tuple2<Double,String>> topTenRanks = ranks.mapToPair(x->x.swap()).sortByKey(false).take(10);
+
+        //Key type conversion for joining
+        JavaPairRDD<Long, Double> topTenLinks = sc.parallelizePairs(topTenRanks).mapToPair(x->new Tuple2<Long, Double>(Long.parseLong(x._2()), x._1()));
+
+        //Replace link index with the actual title
+        JavaPairRDD<String, Double> topTenRDD = topTenLinks
+                                                .join(indexedTitles).values().mapToPair(x->x.swap());
+
+        topTenRDD.saveAsTextFile("hdfs://wasp.cs.colostate.edu:30121/PA3/out/");
     }
 }
