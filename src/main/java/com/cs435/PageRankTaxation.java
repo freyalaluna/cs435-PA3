@@ -27,7 +27,7 @@ public class PageRankTaxation {
 
         JavaPairRDD<String, String> links = linkList.mapToPair(s->new Tuple2<>(s.split(":")[0].trim(),s.split(":")[1].trim()));
         long totalPages = indexedTitles.count();
-        double teleportation = (1 - BETA) / totalPages;
+        double teleportProb = (1 - BETA);
 
         JavaPairRDD<String, Double> ranks = indexedTitles.mapToPair(title -> new Tuple2<>(title._1.toString(), 1.0/totalPages));
 
@@ -37,17 +37,28 @@ public class PageRankTaxation {
             JavaPairRDD<String, Double> tempRank = linkRankJoin.values().flatMapToPair(new PairFlatMapFunction<Tuple2<String,Double>,String,Double>() {
                 @Override
                 public Iterator<Tuple2<String, Double>> call(Tuple2<String, Double> stringDoubleTuple2) throws Exception {
+                    List<String> urls = List.of(stringDoubleTuple2._1().split(" "));
+                    List<Tuple2<String, Double>> newRanks = Lists.newArrayList();
+                    for(String url : urls){
+                        newRanks.add(new Tuple2<>(url,stringDoubleTuple2._2()/urls.size()));
+                    }
 
+                    return newRanks.iterator();
+                }
+            });
+            ranks = tempRank.reduceByKey(new Function2<Double, Double, Double>() {
+                @Override
+                public Double call(Double a, Double b) throws Exception {
+                    return a + b;
+                }
+            })
+            .mapValues(new Function<Double, Double>() {
+                @Override
+                public Double call(Double pageRank) {
+                    return BETA*pageRank + teleportProb/totalPages;
                 }
             });
         }
-        JavaPairRDD<String, Double> contributions = tempRank.reduceByKey(new Function2<Double, Double, Double>() {
-            @Override
-            public Double call(Double a, Double b) throws Exception {
-                return a + b;
-            }
-        });
-
     }
 
         //local test
