@@ -11,6 +11,7 @@ import org.apache.spark.util.LongAccumulator;
 import scala.Tuple2;
 
 import java.util.*;
+import java.util.function.Function;
 
 
 public class PageRankTaxation {
@@ -58,6 +59,15 @@ public class PageRankTaxation {
                     return BETA*pageRank + teleportProb/totalPages;
                 }
             });
+            
+            List<Tuple2<Double,String>> topTenRanks = ranks.mapToPair(x->x.swap()).sortByKey(false).take(10);
+
+            JavaPairRDD<Long, Double> topTenLinks = sc.parallelizePairs(topTenRanks).mapToPair(x->new Tuple2<Long, Double>(Long.parseLong(x._2()), x._1()));
+
+            JavaPairRDD<String, Double> topTenRDD = topTenLinks
+                                            .join(indexedTitles).values().mapToPair(x->x.swap());
+
+            topTenRDD.saveAsTextFile(outputPath);
         }
     }
 
