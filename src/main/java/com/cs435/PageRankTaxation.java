@@ -15,8 +15,7 @@ import java.util.*;
 
 public class PageRankTaxation {
     private static final int NUM_ITERATIONS = 25;
-    private static final double BETA = 0.85; //follow links prob
-    private static final double TAXATION = 1 - BETA; //teleportion prob
+    private static final double BETA = 0.85; //follow links
  
     public static void calculatePR(JavaSparkContext sc, String outputPath){
         //PageRank with taxation
@@ -26,12 +25,28 @@ public class PageRankTaxation {
         JavaPairRDD<Long, String> indexedTitles = titleList.zipWithIndex().mapToPair(
                                   x-> new Tuple2<>(x._2()+1,x._1()));
 
-        //^^ same as PR Ideal
-
-        //Parse links + including dead-end pages
-        
-        
+        JavaPairRDD<String, String> links = linkList.mapToPair(s->new Tuple2<>(s.split(":")[0].trim(),s.split(":")[1].trim()));
         long totalPages = indexedTitles.count();
+        double teleportation = (1 - BETA) / totalPages;
+
+        JavaPairRDD<String, Double> ranks = indexedTitles.mapToPair(title -> new Tuple2<>(title._1.toString(), 1.0/totalPages));
+
+        for(int i = 0; i < NUM_ITERATIONS; i++){
+            JavaPairRDD<String, Tuple2<String, Double>> linkRankJoin = links.join(ranks);
+
+            JavaPairRDD<String, Double> tempRank = linkRankJoin.values().flatMapToPair(new PairFlatMapFunction<Tuple2<String,Double>,String,Double>() {
+                @Override
+                public Iterator<Tuple2<String, Double>> call(Tuple2<String, Double> stringDoubleTuple2) throws Exception {
+
+                }
+            });
+        }
+        JavaPairRDD<String, Double> contributions = tempRank.reduceByKey(new Function2<Double, Double, Double>() {
+            @Override
+            public Double call(Double a, Double b) throws Exception {
+                return a + b;
+            }
+        });
 
     }
 
