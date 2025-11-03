@@ -5,13 +5,13 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.util.LongAccumulator;
 import scala.Tuple2;
 
 import java.util.*;
-import java.util.function.Function;
 
 
 public class PageRankTaxation {
@@ -59,7 +59,7 @@ public class PageRankTaxation {
                     return BETA*pageRank + teleportProb/totalPages;
                 }
             });
-            
+
             List<Tuple2<Double,String>> topTenRanks = ranks.mapToPair(x->x.swap()).sortByKey(false).take(10);
 
             JavaPairRDD<Long, Double> topTenLinks = sc.parallelizePairs(topTenRanks).mapToPair(x->new Tuple2<Long, Double>(Long.parseLong(x._2()), x._1()));
